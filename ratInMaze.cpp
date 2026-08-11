@@ -68,7 +68,7 @@ int main()
 
     bool ans = false;
 
-    if (n > 0 && maze[0][0] == 1)
+    if (n > 0 && maze[0][0] == 1 || maze[n - 1][n - 1] == 0)
     {
         ans = ratInMaze(0, 0, maze, n, vis);
     }
