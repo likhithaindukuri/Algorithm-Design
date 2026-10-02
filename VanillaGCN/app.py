@@ -1,571 +1,228 @@
 import streamlit as st
 import pandas as pd
-
 from vanillaGCN import (
     run_gcn,
     names,
-    X,
-    true_labels
+    true_labels,
+    known
 )
-
-
-# ============================================================
-# PAGE CONFIGURATION
-# ============================================================
-
+# Page configuration
 st.set_page_config(
     page_title="GCN Bank Fraud Detection",
     page_icon="🏦",
     layout="wide"
 )
-
-
-# ============================================================
-# RUN GCN
-# ============================================================
-
-result = run_gcn()
-
-predictions = result["predictions"]
-probabilities = result["probabilities"]
-accuracy = result["accuracy"]
-accuracy_history = result["accuracy_history"]
-loss_history = result["loss_history"]
-
-
-# ============================================================
-# CREATE RESULTS DATAFRAME
-# ============================================================
-
-rows = []
-
-for i in range(len(names)):
-
-    if predictions[i] == 1:
-        predicted = "FRAUD"
-    else:
-        predicted = "REAL"
-
-    if true_labels[i] == 1:
-        actual = "FRAUD"
-    else:
-        actual = "REAL"
-
-    rows.append({
-        "Account": names[i],
-        "Transaction Amount": X[i][0],
-        "Transaction Count": X[i][1],
-        "Suspicious Activity": X[i][2],
-        "P(REAL)": probabilities[i][0],
-        "P(FRAUD)": probabilities[i][1],
-        "Predicted": predicted,
-        "Actual": actual
-    })
-
-
-results_df = pd.DataFrame(rows)
-
-
-# ============================================================
-# HEADER
-# ============================================================
-
-st.title("🏦 Bank Account Fraud Detection using GCN")
-
+# Run GCN
+@st.cache_data
+def get_results():
+    result = run_gcn()
+    probabilities = result["probabilities"]
+    epochs = result["epochs"]
+    rows = []
+    for i in range(len(names)):
+        p_fraud = probabilities[i][1]
+        predicted = (
+            "FRAUD"
+            if probabilities[i][1]
+            > probabilities[i][0]
+            else "NORMAL"
+        )
+        actual = (
+            "FRAUD"
+            if true_labels[i] == 1
+            else "NORMAL"
+        )
+        rows.append({
+            "Account": names[i],
+            "P(Fraud)": p_fraud,
+            "Predicted": predicted,
+            "Actual": actual,
+            "Labeled by Analyst":
+                "Yes" if i in known else "No"
+        })
+    results_df = pd.DataFrame(rows)
+    epochs_df = pd.DataFrame(epochs)
+    return results_df, epochs_df
+results_df, epochs_df = get_results()
+# Title
+st.title("🏦 Bank Fraud Detection using GCN")
 st.caption(
     "Vanilla Graph Convolutional Network, pure Python | "
     "Algorithm Design assignment"
 )
-
-
-# ============================================================
-# SUMMARY METRICS
-# ============================================================
-
-correct = 0
-
-for i in range(len(names)):
-
-    if predictions[i] == true_labels[i]:
-        correct += 1
-
-
-total = len(names)
-
-fraud_count = 0
-real_count = 0
-
-for prediction in predictions:
-
-    if prediction == 1:
-        fraud_count += 1
-    else:
-        real_count += 1
-
-
+# Summary
+correct = int(
+    (
+        results_df["Predicted"]
+        ==
+        results_df["Actual"]
+    ).sum()
+)
+total = len(results_df)
+fraud_count = int(
+    (
+        results_df["Predicted"]
+        == "FRAUD"
+    ).sum()
+)
+normal_count = int(
+    (
+        results_df["Predicted"]
+        == "NORMAL"
+    ).sum()
+)
 c1, c2, c3, c4 = st.columns(4)
-
-
-with c1:
-
-    st.metric(
-        "Accounts",
-        total
-    )
-
-
-with c2:
-
-    st.metric(
-        "Predicted FRAUD",
-        fraud_count
-    )
-
-
-with c3:
-
-    st.metric(
-        "Predicted REAL",
-        real_count
-    )
-
-
-with c4:
-
-    st.metric(
-        "Correct",
-        f"{correct}/{total}"
-    )
-
-
-# ============================================================
-# TABS
-# ============================================================
-
+c1.metric(
+    "Bank Accounts",
+    total
+)
+c2.metric(
+    "Predicted FRAUD",
+    fraud_count
+)
+c3.metric(
+    "Predicted NORMAL",
+    normal_count
+)
+c4.metric(
+    "Correct",
+    f"{correct}/{total}"
+)
+# Tabs
 tab1, tab2, tab3, tab4 = st.tabs(
     [
-        "📄 Model Information",
         "📊 Results",
         "📈 Training",
-        "🔎 Check an Account"
+        "🔎 Check an Account",
+        "ℹ️ About GCN"
     ]
 )
-
-
-# ============================================================
-# TAB 1 - MODEL INFORMATION
-# ============================================================
-
+# TAB 1 - RESULTS
 with tab1:
-
-    st.subheader("GCN Model Information")
-
-    st.write(
-        "This application uses a Graph Convolutional Network "
-        "implemented from scratch using basic Python."
+    st.subheader(
+        "Fraud Probability for Each Bank Account"
     )
-
-    st.write("### Graph Information")
-
-    info1, info2, info3 = st.columns(3)
-
-    with info1:
-
-        st.metric(
-            "Number of Accounts",
-            len(names)
-        )
-
-    with info2:
-
-        from vanillaGCN import edges
-
-        st.metric(
-            "Transaction Connections",
-            len(edges)
-        )
-
-    with info3:
-
-        st.metric(
-            "Features per Account",
-            len(X[0])
-        )
-
-
-    st.write("### Account Features")
-
-    st.write(
-        """
-        Each bank account has three input features:
-
-        - Transaction Amount
-        - Transaction Count
-        - Suspicious Activity
-        """
-    )
-
-
-    st.write("### GCN Process")
-
-    st.code(
-        """
-Account Features
-        ↓
-Feature Normalization
-        ↓
-Transaction Graph
-        ↓
-Adjacency Matrix
-        ↓
-Normalized Adjacency Matrix
-        ↓
-GCN Layer 1
-        ↓
-ReLU Activation
-        ↓
-GCN Layer 2
-        ↓
-Softmax
-        ↓
-REAL / FRAUD Prediction
-        """,
-        language="text"
-    )
-
-
-    st.write("### Classification")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.success(
-            "REAL\n\nClass 0"
-        )
-
-    with col2:
-
-        st.error(
-            "FRAUD\n\nClass 1"
-        )
-
-
-# ============================================================
-# TAB 2 - RESULTS
-# ============================================================
-
-with tab2:
-
-    st.subheader("Probability of Fraud for Each Account")
-
-    chart_data = results_df.set_index(
-        "Account"
-    )[["P(FRAUD)"]]
-
     st.bar_chart(
-        chart_data
+        results_df.set_index("Account")[
+            "P(Fraud)"
+        ]
     )
-
-
-    st.subheader("Account Results")
-
-
-    # --------------------------------------------------------
-    # Format dataframe for display
-    # --------------------------------------------------------
-
-    display_df = results_df.copy()
-
-    display_df["P(REAL)"] = display_df["P(REAL)"].apply(
-        lambda x: f"{x:.3f}"
+    st.subheader(
+        "Account Classification"
     )
-
-    display_df["P(FRAUD)"] = display_df["P(FRAUD)"].apply(
-        lambda x: f"{x:.3f}"
-    )
-
-
-    # --------------------------------------------------------
-    # Color rows
-    # --------------------------------------------------------
-
     def color_row(row):
-
         if row["Predicted"] == "FRAUD":
-
-            return [
-                "background-color: #fde8ea; color: black"
-            ] * len(row)
-
+            color = "#fde8ea"
         else:
-
-            return [
-                "background-color: #e3f4f1; color: black"
-            ] * len(row)
-
-
-    styled_df = display_df.style.apply(
-        color_row,
-        axis=1
+            color = "#e3f4f1"
+        return [
+            f"background-color: {color}; color: black"
+        ] * len(row)
+    styled_df = (
+        results_df.style
+        .apply(
+            color_row,
+            axis=1
+        )
+        .format({
+            "P(Fraud)": "{:.3f}"
+        })
     )
-
-
     st.dataframe(
         styled_df,
         use_container_width=True,
         hide_index=True
     )
-
-
-    # --------------------------------------------------------
-    # Accuracy
-    # --------------------------------------------------------
-
-    st.subheader("Model Accuracy")
-
-    st.progress(
-        accuracy / 100,
-        text=f"Accuracy = {accuracy:.2f}%"
+# TAB 2 - TRAINING
+with tab2:
+    st.subheader(
+        "GCN Training Progress"
     )
-
-
-# ============================================================
-# TAB 3 - TRAINING
-# ============================================================
-
-with tab3:
-
-    st.subheader("Training Progress")
-
-
-    # --------------------------------------------------------
-    # Training summary
-    # --------------------------------------------------------
-
-    c1, c2 = st.columns(2)
-
-
-    with c1:
-
-        st.metric(
-            "Number of Epochs",
-            len(accuracy_history)
-        )
-
-
-    with c2:
-
-        st.metric(
-            "Final Accuracy",
-            f"{accuracy:.2f}%"
-        )
-
-
-    # --------------------------------------------------------
-    # Accuracy graph
-    # --------------------------------------------------------
-
-    st.write("### Accuracy During Training")
-
-    accuracy_df = pd.DataFrame(
-        {
-            "Accuracy": accuracy_history
-        }
-    )
-
     st.line_chart(
-        accuracy_df
+        epochs_df.set_index("epoch")[
+            [
+                "confidence",
+                "accuracy"
+            ]
+        ]
     )
-
-
-    # --------------------------------------------------------
-    # Loss graph
-    # --------------------------------------------------------
-
-    st.write("### Loss During Training")
-
-    loss_df = pd.DataFrame(
-        {
-            "Loss": loss_history
-        }
-    )
-
-    st.line_chart(
-        loss_df
-    )
-
-
-    # --------------------------------------------------------
-    # Training table
-    # --------------------------------------------------------
-
-    st.write("### Training Values")
-
-    training_df = pd.DataFrame(
-        {
-            "Epoch": range(
-                1,
-                len(accuracy_history) + 1
-            ),
-            "Accuracy": accuracy_history,
-            "Loss": loss_history
-        }
-    )
-
-
     st.dataframe(
-        training_df,
+        epochs_df,
         use_container_width=True,
         hide_index=True
     )
-
-
-# ============================================================
-# TAB 4 - CHECK ONE ACCOUNT
-# ============================================================
-
-with tab4:
-
-    st.subheader("Check an Account")
-
-
+# TAB 3 - CHECK ACCOUNT
+with tab3:
+    st.subheader(
+        "Check One Bank Account"
+    )
     selected_account = st.selectbox(
         "Choose an account",
-        names
+        results_df["Account"].tolist()
     )
-
-
-    # --------------------------------------------------------
-    # Find selected account
-    # --------------------------------------------------------
-
-    index = names.index(
-        selected_account
+    row = results_df[
+        results_df["Account"]
+        == selected_account
+    ].iloc[0]
+    fraud_probability = float(
+        row["P(Fraud)"]
     )
-
-
-    # --------------------------------------------------------
-    # Account information
-    # --------------------------------------------------------
-
-    st.write("### Account Details")
-
-
-    c1, c2, c3 = st.columns(3)
-
-
-    with c1:
-
-        st.metric(
-            "Transaction Amount",
-            X[index][0]
+    st.progress(
+        fraud_probability,
+        text=(
+            f"P(Fraud) = "
+            f"{fraud_probability:.3f}"
         )
-
-
-    with c2:
-
-        st.metric(
-            "Transaction Count",
-            X[index][1]
-        )
-
-
-    with c3:
-
-        st.metric(
-            "Suspicious Activity",
-            X[index][2]
-        )
-
-
-    # --------------------------------------------------------
-    # Probabilities
-    # --------------------------------------------------------
-
-    real_probability = probabilities[index][0]
-
-    fraud_probability = probabilities[index][1]
-
-
-    st.write("### Prediction Probabilities")
-
-
-    p1, p2 = st.columns(2)
-
-
-    with p1:
-
-        st.write(
-            f"REAL: {real_probability * 100:.2f}%"
-        )
-
-        st.progress(
-            real_probability
-        )
-
-
-    with p2:
-
-        st.write(
-            f"FRAUD: {fraud_probability * 100:.2f}%"
-        )
-
-        st.progress(
-            fraud_probability
-        )
-
-
-    # --------------------------------------------------------
-    # Final prediction
-    # --------------------------------------------------------
-
-    st.write("### Final Prediction")
-
-
-    if predictions[index] == 1:
-
+    )
+    if row["Predicted"] == "FRAUD":
         st.error(
-            f"{selected_account} is predicted as FRAUD"
+            f"{selected_account} is predicted "
+            f"as FRAUD "
+            f"(actual: {row['Actual']})"
         )
-
     else:
-
         st.success(
-            f"{selected_account} is predicted as REAL"
+            f"{selected_account} is predicted "
+            f"as NORMAL "
+            f"(actual: {row['Actual']})"
         )
-
-
-    # --------------------------------------------------------
-    # Actual label
-    # --------------------------------------------------------
-
-    if true_labels[index] == 1:
-
-        actual_label = "FRAUD"
-
-    else:
-
-        actual_label = "REAL"
-
-
     st.write(
-        f"Actual label: **{actual_label}**"
+        "Labeled by bank analyst before training: "
+        f"**{row['Labeled by Analyst']}**"
     )
+# TAB 4 - ABOUT
+with tab4:
+    st.subheader(
+        "How the Vanilla GCN Works"
+    )
+    st.write(
+        """
+        This project detects potentially fraudulent bank accounts
+        using a Graph Convolutional Network.
+        **Graph representation**
+        - Each node represents a bank account.
+        - Each edge represents a transaction between two accounts.
+        - Node features describe account transaction behaviour.
+        **Node features**
+        1. Transaction frequency
+        2. Average transaction amount
+        3. Unusual transaction ratio
+        4. New beneficiary ratio
 
+        **GCN process**
+        Account features are first propagated through the transaction
+        graph. The GCN then learns patterns from a small number of
+        analyst-labelled accounts.
 
-    # --------------------------------------------------------
-    # Correct / Incorrect
-    # --------------------------------------------------------
+        The final layer produces two probabilities:
 
-    if predictions[index] == true_labels[index]:
+        - NORMAL
+        - FRAUD
 
-        st.success(
-            "Prediction is correct."
-        )
+        The account is classified according to the higher probability.
 
-    else:
-
-        st.warning(
-            "Prediction is different from the actual label."
-        )
+        This implementation is written from scratch using Python
+        matrix operations without NumPy, PyTorch, TensorFlow,
+        or other machine-learning libraries.
+        """
+    )
